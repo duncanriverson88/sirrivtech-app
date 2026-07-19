@@ -1,17 +1,13 @@
 import { useState, useEffect } from "react";
-import { products as defaultProducts } from "../../data/products";
-
-function loadProducts() {
-  const saved = localStorage.getItem("products");
-  if (saved) {
-    return JSON.parse(saved);
-  }
-  return defaultProducts;
-}
-
-function saveProducts(products) {
-  localStorage.setItem("products", JSON.stringify(products));
-}
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { db } from "../../firebase";
 
 const emptyForm = {
   name: "",
@@ -23,13 +19,23 @@ const emptyForm = {
 };
 
 function AdminProducts() {
-  const [products, setProducts] = useState(loadProducts);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
 
+  async function fetchProducts() {
+    const snapshot = await getDocs(collection(db, "products"));
+    const items = snapshot.docs.map(function (docSnap) {
+      return { ...docSnap.data(), firestoreId: docSnap.id };
+    });
+    setProducts(items);
+    setLoading(false);
+  }
+
   useEffect(function () {
-    saveProducts(products);
-  }, [products]);
+    fetchProducts();
+  }, []);
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
@@ -41,55 +47,63 @@ function AdminProducts() {
     });
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
 
+    const productData = {
+      ...form,
+      price: Number(form.price),
+    };
+
     if (editingId) {
-      setProducts(function (prev) {
-        return prev.map(function (p) {
-          if (p.id === editingId) {
-            return { ...form, id: editingId, price: Number(form.price) };
-          }
-          return p;
-        });
-      });
-      setEditingId(null);
+      const productRef = doc(db, "products", editingId);
+      await updateDoc(productRef, productData);
     } else {
-      const newProduct = {
-        ...form,
-        id: Date.now(),
-        price: Number(form.price),
-      };
-      setProducts(function (prev) {
-        return [...prev, newProduct];
-      });
+      await addDoc(collection(db, "products"), productData);
     }
 
     setForm(emptyForm);
+    setEditingId(null);
+    fetchProducts();
   }
 
   function handleEdit(product) {
-    setForm(product);
-    setEditingId(product.id);
+    setForm({
+      name: product.name,
+      category: product.category,
+      price: product.price,
+      image: product.image,
+      description: product.description,
+      inStock: product.inStock,
+    });
+    setEditingId(product.firestoreId);
   }
 
-  function handleDelete(id) {
+  async function handleDelete(firestoreId) {
     const confirmed = window.confirm("Delete this product?");
     if (!confirmed) return;
-    setProducts(function (prev) {
-      return prev.filter(function (p) {
-        return p.id !== id;
-      });
-    });
-    if (editingId === id) {
+
+    await deleteDoc(doc(db, "products", firestoreId));
+
+    if (editingId === firestoreId) {
       setForm(emptyForm);
       setEditingId(null);
     }
+
+    fetchProducts();
   }
 
   function handleCancelEdit() {
     setForm(emptyForm);
     setEditingId(null);
+  }
+
+  if (loading) {
+    return (
+      <main>
+        <p>Loading products...</p>
+      </main>
+    );
   }
 
   return (
@@ -187,7 +201,7 @@ function AdminProducts() {
         <tbody>
           {products.map(function (product) {
             return (
-              <tr key={product.id}>
+              <tr key={product.firestoreId}>
                 <td>{product.name}</td>
                 <td>{product.category}</td>
                 <td>GHS {product.price}</td>
@@ -196,7 +210,7 @@ function AdminProducts() {
                   <button onClick={function () { handleEdit(product); }}>
                     Edit
                   </button>
-                  <button onClick={function () { handleDelete(product.id); }}>
+                  <button onClick={function () { handleDelete(product.firestoreId); }}>
                     Delete
                   </button>
                 </td>

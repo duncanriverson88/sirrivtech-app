@@ -1,16 +1,31 @@
-import { products as defaultProducts } from "../data/products";
+import { useState, useEffect } from "react";
+import { collection, getDocs } from "firebase/firestore";
+import { db } from "../firebase";
 import ProductCard from "../components/ProductCard";
 
-function loadProducts() {
-  const saved = localStorage.getItem("products");
-  if (saved) {
-    return JSON.parse(saved);
-  }
-  return defaultProducts;
-}
-
 function Products({ onAddToCart }) {
-  const products = loadProducts();
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(function () {
+    async function fetchProducts() {
+      const snapshot = await getDocs(collection(db, "products"));
+      const items = snapshot.docs.map(function (doc) {
+        return { ...doc.data(), firestoreId: doc.id };
+      });
+      setProducts(items);
+      setLoading(false);
+    }
+    fetchProducts();
+  }, []);
+
+  if (loading) {
+    return (
+      <main>
+        <p>Loading products...</p>
+      </main>
+    );
+  }
 
   return (
     <main>
@@ -20,7 +35,7 @@ function Products({ onAddToCart }) {
           {products.map(function (product) {
             return (
               <ProductCard
-                key={product.id}
+                key={product.firestoreId}
                 product={product}
                 onAddToCart={onAddToCart}
               />
